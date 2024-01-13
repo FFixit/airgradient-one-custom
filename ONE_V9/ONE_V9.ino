@@ -55,6 +55,8 @@ CC BY-SA 4.0 Attribution-ShareAlike 4.0 International License
 
 #include <U8g2lib.h>
 
+#include "time.h"
+
 #define DEBUG true
 
 #define I2C_SDA 7
@@ -72,7 +74,7 @@ PMS pms1(Serial0);
 
 PMS::DATA data1;
 
-S8_UART * sensor_S8;
+S8_UART* sensor_S8;
 S8_sensor sensor;
 
 // time in seconds needed for NOx conditioning
@@ -83,7 +85,7 @@ int addr = 4;
 byte value;
 
 // Display bottom right
-U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE);
+U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/U8X8_PIN_NONE);
 
 String APIROOT = "http://hw.airgradient.com/";
 
@@ -143,7 +145,7 @@ void setup() {
   if (DEBUG) {
     Serial.begin(115200);
     // see https://github.com/espressif/arduino-esp32/issues/6983
-    Serial.setTxTimeoutMs(0); // <<<====== solves the delay issue
+    Serial.setTxTimeoutMs(0);  // <<<====== solves the delay issue
   }
 
   Wire.begin(I2C_SDA, I2C_SCL);
@@ -199,13 +201,23 @@ void setup() {
     inConf();
   }
 
-   if (connectWIFI) connectToWifi();
-    if (WiFi.status() == WL_CONNECTED) {
-      sendPing();
-      Serial.println(F("WiFi connected!"));
-      Serial.println("IP address: ");
-      Serial.println(WiFi.localIP());
-    }
+  if (connectWIFI) connectToWifi();
+  if (WiFi.status() == WL_CONNECTED) {
+    sendPing();
+    Serial.println(F("WiFi connected!"));
+    Serial.println("IP address: ");
+    Serial.println(WiFi.localIP());
+  }
+
+  String gatewayIP = WiFi.gatewayIP().toString();
+  Serial.println("gatewayIP:");
+  Serial.println(gatewayIP);
+  Serial.println(gatewayIP.c_str());
+  // String localIP = WiFi.localIP().toString();
+  // Serial.println("localIP:");
+  // Serial.println(localIP);
+  configTime(3600, 3600, gatewayIP.c_str(), "pool.ntp.org");
+
   updateOLED2("Warming Up", "Serial Number:", String(getNormalizedMac()));
 }
 
@@ -226,22 +238,22 @@ void updateTVOC() {
   uint16_t defaultT = 0x6666;
   uint16_t srawVoc = 0;
   uint16_t srawNox = 0;
-  uint16_t defaultCompenstaionRh = 0x8000; // in ticks as defined by SGP41
-  uint16_t defaultCompenstaionT = 0x6666; // in ticks as defined by SGP41
-  uint16_t compensationRh = 0; // in ticks as defined by SGP41
-  uint16_t compensationT = 0; // in ticks as defined by SGP41
+  uint16_t defaultCompenstaionRh = 0x8000;  // in ticks as defined by SGP41
+  uint16_t defaultCompenstaionT = 0x6666;   // in ticks as defined by SGP41
+  uint16_t compensationRh = 0;              // in ticks as defined by SGP41
+  uint16_t compensationT = 0;               // in ticks as defined by SGP41
 
   delay(1000);
 
-  compensationT = static_cast < uint16_t > ((temp + 45) * 65535 / 175);
-  compensationRh = static_cast < uint16_t > (hum * 65535 / 100);
+  compensationT = static_cast< uint16_t >((temp + 45) * 65535 / 175);
+  compensationRh = static_cast< uint16_t >(hum * 65535 / 100);
 
   if (conditioning_s > 0) {
     error = sgp41.executeConditioning(compensationRh, compensationT, srawVoc);
     conditioning_s--;
   } else {
     error = sgp41.measureRawSignals(compensationRh, compensationT, srawVoc,
-      srawNox);
+                                    srawNox);
   }
 
   if (currentMillis - previousTVOC >= tvocInterval) {
@@ -255,14 +267,13 @@ void updateTVOC() {
       NOX = nox_algorithm.process(srawNox);
       Serial.println(String(TVOC));
     }
-
   }
 }
 
 void updateCo2() {
   if (currentMillis - previousCo2 >= co2Interval) {
     previousCo2 += co2Interval;
-    Co2 = sensor_S8 -> get_co2();
+    Co2 = sensor_S8->get_co2();
     Serial.println(String(Co2));
   }
 }
@@ -274,12 +285,12 @@ void updatePm() {
       pm01 = data1.PM_AE_UG_1_0;
       pm25 = data1.PM_AE_UG_2_5;
       pm10 = data1.PM_AE_UG_10_0;
-//      pm03PCount = data1.PM_RAW_0_3;
+      //      pm03PCount = data1.PM_RAW_0_3;
     } else {
       pm01 = -1;
       pm25 = -1;
       pm10 = -1;
-//      pm03PCount = -1;
+      //      pm03PCount = -1;
     }
   }
 }
@@ -358,7 +369,6 @@ void inConf() {
       delay(1000);
       ESP.restart();
     }
-
   }
   lastState = currentState;
   delay(100);
@@ -391,7 +401,7 @@ void setConfig() {
     inF = true;
     inUSAQI = true;
     useRGBledBar = true;
-  } else  if (buttonConfig == 4) {
+  } else if (buttonConfig == 4) {
     updateOLED2("T:C, PM:ug/m3", "LED Bar: off", "Long Press Saves");
     inF = false;
     inUSAQI = false;
@@ -418,9 +428,7 @@ void setConfig() {
 }
 
 void sendPing() {
-  String payload = "{\"wifi\":" + String(WiFi.RSSI()) +
-    ", \"boot\":" + loopCount +
-    "}";
+  String payload = "{\"wifi\":" + String(WiFi.RSSI()) + ", \"boot\":" + loopCount + "}";
 }
 
 void updateOLED2(String ln1, String ln2, String ln3) {
@@ -532,18 +540,9 @@ void updateOLED3() {
 void sendToServer() {
   if (currentMillis - previoussendToServer >= sendToServerInterval) {
     previoussendToServer += sendToServerInterval;
-    String payload = "{\"wifi\":" + String(WiFi.RSSI()) +
-      (Co2 < 0 ? "" : ", \"rco2\":" + String(Co2)) +
-      (pm01 < 0 ? "" : ", \"pm01\":" + String(pm01)) +
-      (pm25 < 0 ? "" : ", \"pm02\":" + String(pm25)) +
-      (pm10 < 0 ? "" : ", \"pm10\":" + String(pm10)) +
-//      (pm03PCount < 0 ? "" : ", \"pm003_count\":" + String(pm03PCount)) +
-      (TVOC < 0 ? "" : ", \"tvoc_index\":" + String(TVOC)) +
-      (NOX < 0 ? "" : ", \"nox_index\":" + String(NOX)) +
-      ", \"atmp\":" + String(temp) +
-      (hum < 0 ? "" : ", \"rhum\":" + String(hum)) +
-      ", \"boot\":" + loopCount +
-      "}";
+    String payload = "{\"wifi\":" + String(WiFi.RSSI()) + (Co2 < 0 ? "" : ", \"rco2\":" + String(Co2)) + (pm01 < 0 ? "" : ", \"pm01\":" + String(pm01)) + (pm25 < 0 ? "" : ", \"pm02\":" + String(pm25)) + (pm10 < 0 ? "" : ", \"pm10\":" + String(pm10)) +
+                     //      (pm03PCount < 0 ? "" : ", \"pm003_count\":" + String(pm03PCount)) +
+                     (TVOC < 0 ? "" : ", \"tvoc_index\":" + String(TVOC)) + (NOX < 0 ? "" : ", \"nox_index\":" + String(NOX)) + ", \"atmp\":" + String(temp) + (hum < 0 ? "" : ", \"rhum\":" + String(hum)) + ", \"boot\":" + loopCount + "}";
 
     if (WiFi.status() == WL_CONNECTED) {
       Serial.println(payload);
@@ -590,11 +589,10 @@ void connectToWifi() {
   String HOTSPOT = "AG-" + String(getNormalizedMac());
   updateOLED2("180s to connect", "to Wifi Hotspot", HOTSPOT);
   wifiManager.setTimeout(180);
-  if (!wifiManager.autoConnect((const char * ) HOTSPOT.c_str())) {
+  if (!wifiManager.autoConnect((const char*)HOTSPOT.c_str())) {
     Serial.println("failed to connect and hit timeout");
     delay(6000);
   }
-
 }
 
 void debug(String msg) {
@@ -633,112 +631,126 @@ void setRGBledCO2color(int co2Value) {
   if (co2Value >= 3000 && co2Value < 10000) setRGBledColor('z');
 }
 
+bool isNight() {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) {
+    Serial.println("Failed to obtain time");
+    return false;
+  }
+  Serial.println("Current hour: " + String(timeinfo.tm_hour));
+  return timeinfo.tm_hour >= 22 || timeinfo.tm_hour <= 7;
+}
+
 void setRGBledColor(char color) {
-  if (useRGBledBar) {
-    //pixels.clear();
+  if (useRGBledBar && !isNight()) {
+    Serial.println("Setting led color");
     switch (color) {
-    case 'g':
-      for (int i = 0; i < 11; i++) {
-        pixels.setPixelColor(i, pixels.Color(0, 255, 0));
-        delay(30);
-        pixels.show();
-      }
-      break;
-    case 'y':
-      for (int i = 0; i < 11; i++) {
-        pixels.setPixelColor(i, pixels.Color(255, 255, 0));
-        delay(30);
-        pixels.show();
-      }
-      break;
-    case 'o':
-      for (int i = 0; i < 11; i++) {
-        pixels.setPixelColor(i, pixels.Color(255, 128, 0));
-        delay(30);
-        pixels.show();
-      }
-      break;
-    case 'r':
-      for (int i = 0; i < 11; i++) {
-        pixels.setPixelColor(i, pixels.Color(255, 0, 0));
-        delay(30);
-        pixels.show();
-      }
-      break;
-    case 'b':
-      for (int i = 0; i < 11; i++) {
-        pixels.setPixelColor(i, pixels.Color(0, 0, 255));
-        delay(30);
-        pixels.show();
-      }
-      break;
-    case 'w':
-      for (int i = 0; i < 11; i++) {
-        pixels.setPixelColor(i, pixels.Color(255, 255, 255));
-        delay(30);
-        pixels.show();
-      }
-      break;
-    case 'p':
-      for (int i = 0; i < 11; i++) {
-        pixels.setPixelColor(i, pixels.Color(153, 0, 153));
-        delay(30);
-        pixels.show();
-      }
-      break;
-    case 'z':
-      for (int i = 0; i < 11; i++) {
-        pixels.setPixelColor(i, pixels.Color(102, 0, 0));
-        delay(30);
-        pixels.show();
-      }
-      break;
-    case 'n':
-      for (int i = 0; i < 11; i++) {
-        pixels.setPixelColor(i, pixels.Color(0, 0, 0));
-        delay(30);
-        pixels.show();
-      }
-      break;
-    default:
-      // if nothing else matches, do the default
-      // default is optional
-      break;
+      case 'g':
+        for (int i = 0; i < 11; i++) {
+          pixels.setPixelColor(i, pixels.Color(0, 255, 0));
+          delay(30);
+          pixels.show();
+        }
+        break;
+      case 'y':
+        for (int i = 0; i < 11; i++) {
+          pixels.setPixelColor(i, pixels.Color(255, 255, 0));
+          delay(30);
+          pixels.show();
+        }
+        break;
+      case 'o':
+        for (int i = 0; i < 11; i++) {
+          pixels.setPixelColor(i, pixels.Color(255, 128, 0));
+          delay(30);
+          pixels.show();
+        }
+        break;
+      case 'r':
+        for (int i = 0; i < 11; i++) {
+          pixels.setPixelColor(i, pixels.Color(255, 0, 0));
+          delay(30);
+          pixels.show();
+        }
+        break;
+      case 'b':
+        for (int i = 0; i < 11; i++) {
+          pixels.setPixelColor(i, pixels.Color(0, 0, 255));
+          delay(30);
+          pixels.show();
+        }
+        break;
+      case 'w':
+        for (int i = 0; i < 11; i++) {
+          pixels.setPixelColor(i, pixels.Color(255, 255, 255));
+          delay(30);
+          pixels.show();
+        }
+        break;
+      case 'p':
+        for (int i = 0; i < 11; i++) {
+          pixels.setPixelColor(i, pixels.Color(153, 0, 153));
+          delay(30);
+          pixels.show();
+        }
+        break;
+      case 'z':
+        for (int i = 0; i < 11; i++) {
+          pixels.setPixelColor(i, pixels.Color(102, 0, 0));
+          delay(30);
+          pixels.show();
+        }
+        break;
+      case 'n':
+        for (int i = 0; i < 11; i++) {
+          pixels.setPixelColor(i, pixels.Color(0, 0, 0));
+          delay(30);
+          pixels.show();
+        }
+        break;
+      default:
+        // if nothing else matches, do the default
+        // default is optional
+        break;
     }
+  } else {
+    Serial.println("Clearing led color");
+    pixels.clear();
+    pixels.show();
   }
 }
 
 void ledTest() {
   updateOLED2("LED Test", "running", ".....");
   for (int i = 0; i < 11; i++) {
-        pixels.setPixelColor(i, pixels.Color(255, 0, 0));
-        delay(30);
-        pixels.show();
-      }
+    pixels.setPixelColor(i, pixels.Color(255, 0, 0));
+    delay(30);
+    pixels.show();
+  }
   delay(500);
   for (int i = 0; i < 11; i++) {
-        pixels.setPixelColor(i, pixels.Color(0, 255, 0));
-        delay(30);
-        pixels.show();
-      }
+    pixels.setPixelColor(i, pixels.Color(0, 255, 0));
+    delay(30);
+    pixels.show();
+  }
   delay(500);
   for (int i = 0; i < 11; i++) {
-        pixels.setPixelColor(i, pixels.Color(0, 0, 255));
-        delay(30);
-        pixels.show();
-      }
+    pixels.setPixelColor(i, pixels.Color(0, 0, 255));
+    delay(30);
+    pixels.show();
+  }
   delay(500);
   for (int i = 0; i < 11; i++) {
-        pixels.setPixelColor(i, pixels.Color(255, 255, 255));
-        delay(30);
-        pixels.show();
-      }
+    pixels.setPixelColor(i, pixels.Color(255, 255, 255));
+    delay(30);
+    pixels.show();
+  }
   delay(500);
   for (int i = 0; i < 11; i++) {
-        pixels.setPixelColor(i, pixels.Color(0, 0, 0));
-        delay(30);
-        pixels.show();
-      }
+    pixels.setPixelColor(i, pixels.Color(0, 0, 0));
+    delay(30);
+    pixels.show();
+  }
   delay(500);
 }
 
